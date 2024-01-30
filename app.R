@@ -17,7 +17,9 @@ sidebar <- sidebar(
     choices = c('fast', 'hac', 'sup')
   ),
   numericInput("seconds", "Sleep secs", 3),
-  actionButton('start', 'Start')
+  actionButton('start', 'Start dorado'),
+  actionButton('close', 'Close session'),
+  actionButton('ctrlc', 'Send ctrl-c')
 )
 
 ui <- page_navbar(
@@ -42,10 +44,23 @@ server <- function(input, output, session) {
   # track tmux sessions
   tmux_sessions <- reactive({
     invalidateLater(2000, session)
-    name <- system("tmux ls | cut -f1 -d:")
-    time <- system("tmux ls | cut -f6,7,8 -d' '")
+    tmuxinfo <- system2("bin/helper.sh", stdout = TRUE, stderr = TRUE)
     
-    
+    if (str_detect(tmuxinfo[[1]], 'no server')) {
+      data.frame(
+        session_id = NA,
+        started = NA,
+        attached = NA,
+        session_path = NA
+      )
+    } else {
+      data.frame(
+        session_id = str_split_i(tmuxinfo, " ", 2),
+        started = str_split_i(tmuxinfo, " ", 1) %>% as.numeric() %>% as.POSIXct(),
+        attached = str_split_i(tmuxinfo, " ", 3),
+        session_path = str_split_i(tmuxinfo, " ", 4)
+      )
+    }
   })
   
   # observers
@@ -66,7 +81,13 @@ server <- function(input, output, session) {
   })
   # outputs
   output$tmux_sessions <- renderReactable({
-    reactable(mtcars, pagination = FALSE, highlight = TRUE, height = 200, compact = F, fullWidth = FALSE,)
+    reactable(
+      tmux_sessions(), 
+      pagination = FALSE, highlight = TRUE, height = 200, compact = T, fullWidth = T,
+      columns = list(
+        started = colDef(format = colFormat(datetime = T, locales = 'en-GB'))
+      )
+      )
   })
   
   output$stdout <- renderText({
