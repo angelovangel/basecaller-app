@@ -621,6 +621,21 @@
       ],
       "Hash": "f7f201522eedbc95f10ef323b100ff29"
     },
+    "shinyFiles": {
+      "Package": "shinyFiles",
+      "Version": "0.9.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "fs",
+        "htmltools",
+        "jsonlite",
+        "shiny",
+        "tibble",
+        "tools"
+      ],
+      "Hash": "92c28bcdee44e205a99799f6ea604b82"
+    },
     "shinyWidgets": {
       "Package": "shinyWidgets",
       "Version": "0.8.1",

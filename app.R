@@ -10,6 +10,7 @@ library(shinyjs)
 library(processx)
 library(reactable)
 library(lubridate)
+library(shinyFiles)
 
 sidebar <- sidebar(
   title = "Controls",
@@ -17,7 +18,9 @@ sidebar <- sidebar(
     "model", "Select dorado model",
     choices = c('fast', 'hac', 'sup')
   ),
-  numericInput("seconds", "Sleep secs", 3),
+  shinyDirButton("pod5", "Select pod5 folder", title ='Please select a folder with signal data', multiple = F),
+  checkboxInput('recursive', 'Search recursively'),
+  selectizeInput('gpus', 'Number of GPUs to use', choices = c(1:4), selected = 4, multiple = F),
   actionButton('start', 'Start dorado (new session)'),
   actionButton('close', 'Close session'),
   actionButton('ctrlc', 'Send ctrl-c')
@@ -40,6 +43,14 @@ ui <- page_navbar(
 )
 
 server <- function(input, output, session) {
+  # shiny files
+  volumes <- c(Home = fs::path_home(), getVolumes()())
+  shinyDirChoose(
+    input, "pod5", 
+    roots = volumes, 
+    session = session, allowDirCreate = FALSE
+    )
+  
   # reactives
   
   # track tmux sessions
@@ -136,8 +147,13 @@ server <- function(input, output, session) {
   })
   
   output$stdout <- renderText({
-    selected()
+    if (is.integer(input$pod5)) {
+      "No directory has been selected"
+    } else {
+      paste0('Selected pod5 directory: ',parseDirPath(volumes, input$pod5))
+    }
   })
+
 }
 
 shinyApp(ui, server)
