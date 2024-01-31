@@ -11,6 +11,7 @@ library(processx)
 library(reactable)
 library(lubridate)
 library(shinyFiles)
+library(digest)
 
 sidebar <- sidebar(
   title = "Controls",
@@ -22,8 +23,9 @@ sidebar <- sidebar(
   checkboxInput('recursive', 'Search recursively'),
   selectizeInput('gpus', 'Number of GPUs to use', choices = c(1:4), selected = 4, multiple = F),
   actionButton('start', 'Start dorado (new session)'),
+  actionButton('show_session', 'Show session pane'),
   actionButton('close', 'Close session'),
-  actionButton('ctrlc', 'Send ctrl-c')
+  actionButton('ctrlc', 'Send ctrl-c to session')
 )
 
 ui <- page_navbar(
@@ -59,6 +61,7 @@ server <- function(input, output, session) {
     session_id = NA,
     started = NA,
     runtime = NA,
+    command = NA,
     attached = NA,
     session_path = NA
   )
@@ -75,6 +78,7 @@ server <- function(input, output, session) {
         session_id = NA,
         started = NA,
         runtime = NA,
+        command = NA,
         attached = NA,
         session_path = NA
       )
@@ -83,6 +87,7 @@ server <- function(input, output, session) {
         session_id = str_split_i(tmuxinfo, " ", 2),
         started = str_split_i(tmuxinfo, " ", 1) %>% as.numeric() %>% as.POSIXct(),
         runtime = NA,
+        command = str_split_i(tmuxinfo, " ", 5),
         attached = str_split_i(tmuxinfo, " ", 3),
         session_path = str_split_i(tmuxinfo, " ", 4)
       ) %>%
@@ -98,21 +103,42 @@ server <- function(input, output, session) {
   })
   
   # observers
+  # start basecalling
   observeEvent(input$start, {
+    
+    new_session_name <- digest::digest(runif(1), algo = 'crc32')
+    pod5dir <- parseDirPath(volumes, input$pod5)
+    # launch new session
+    
+    args1 <- c('new', '-d', '-s', new_session_name)
+    system2('tmux', args = args1)
+    
+    # execute dorado in the new session
+    string <- paste('ont-basecall.sh', 'Space', '-p', 'Space', pod5dir, 'Space',  '-m', 'Space', input$model, sep = ' ')
+    args2 <- c('send-keys', '-t', new_session_name, string, 'C-m')
+    system2('tmux', args = args2)
+  })
+  
+  # attach
+  observeEvent(input$show_session, {
+    session_selected <- tmux_sessions()[selected(), ]$session_id
+    
     withCallingHandlers({
-      args <- c('-h')
-      p <- processx::run(
-        'ont-basecall.sh', args = args,
-        stdout_line_callback = function(line, proc) { message(line) }, 
-        #stdout_callback = cb_count,
-        stderr_to_stdout = TRUE, 
+      shinyjs::html(id = "stdout", "")
+      #args <- paste0(' a', ' -t ', session_selected)
+      args <- c('capture-pane', '-pt', session_selected)
+      processx::run(
+        'tmux', args = args,
+        stdout_line_callback = function(line, proc) {message(line)},
+        stderr_to_stdout = TRUE,
         error_on_status = FALSE
       )
     },
     message = function(m) {
-      shinyjs::html(id = "stdout", html = m$message, add = TRUE);
-      runjs("document.getElementById('stdout').scrollTo(0,1e9);") # scroll the page to bottom with each message, 1e9 is just a big number
-    })
+      shinyjs::html(id = "stdout", html = m$message, add = TRUE)
+      runjs("document.getElementById('stdout').scrollTo(0,1e9);")
+      }
+    )
   })
   
   # close session
@@ -155,11 +181,28 @@ server <- function(input, output, session) {
     updateReactable('tmux_table', data = tmux_sessions(), selected = selected())
   })
   
+  # handle pod5 directory
+  observe({
+    if (is.integer(input$pod5)) {
+      shinyjs::disable('start')
+    } else {
+      pod5dir <- parseDirPath(volumes, input$pod5)
+      pod5files <- length(list.files(pod5dir, pattern = '*.pod5', recursive = input$recursive))
+      if (pod5files > 0) {
+        shinyjs::enable('start')
+      }
+    }
+  })
+  
   output$stdout <- renderText({
     if (is.integer(input$pod5)) {
       "No directory has been selected"
     } else {
-      paste0('Selected pod5 directory: ',parseDirPath(volumes, input$pod5))
+      pod5dir <- parseDirPath(volumes, input$pod5)
+      pod5files <- length(list.files(pod5dir, pattern = '*.pod5', recursive = input$recursive))
+      paste0(
+        'Selected pod5 directory: ', pod5dir, '\n',
+        pod5files, ' pod5 files found')
     }
   })
 
