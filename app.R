@@ -65,7 +65,10 @@ server <- function(input, output, session) {
   
   tmux_sessions <- reactive({
     invalidateLater(2000, session)
+    oldw <- getOption("warn")
+    options(warn = -1)
     tmuxinfo <- system2("bin/helper.sh", stdout = TRUE, stderr = TRUE)
+    options(warn = oldw)
     
     if (any(str_detect(tmuxinfo, 'no server|error'))) {
       data.frame(
@@ -97,8 +100,9 @@ server <- function(input, output, session) {
   # observers
   observeEvent(input$start, {
     withCallingHandlers({
+      args <- c('-h')
       p <- processx::run(
-        'cowsay', args = c(as.character(input$seconds)),
+        'ont-basecall.sh', args = args,
         stdout_line_callback = function(line, proc) { message(line) }, 
         #stdout_callback = cb_count,
         stderr_to_stdout = TRUE, 
@@ -115,14 +119,19 @@ server <- function(input, output, session) {
   observeEvent(input$close, {
     session_selected <- tmux_sessions()[selected(), ]$session_id
     args <- paste0('kill-session -t ', session_selected)
-    system2('tmux', args = args)  
+    if (!is.null(selected())) {
+      system2('tmux', args = args)
+    }  
   })
   
   # send ctrl-c
   observeEvent(input$ctrlc, {
     session_selected <- tmux_sessions()[selected(), ]$session_id
     args <- paste0('send-keys -t ', session_selected, ' C-c')
-    system2('tmux', args = args)
+    if (!is.null(selected())) {
+      system2('tmux', args = args)
+    }
+    
   })
   
   # outputs
