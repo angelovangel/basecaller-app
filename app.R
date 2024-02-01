@@ -13,6 +13,9 @@ library(lubridate)
 library(shinyFiles)
 library(digest)
 
+# global
+barcoding_kits <- read.csv('data/kits.csv')$kit
+
 sidebar <- sidebar(
   title = "Controls",
   selectizeInput(
@@ -21,11 +24,16 @@ sidebar <- sidebar(
   ),
   shinyDirButton("pod5", "Select pod5 folder", title ='Please select a folder with signal data', multiple = F),
   checkboxInput('recursive', 'Search recursively'),
-  selectizeInput('gpus', 'Number of GPUs to use', choices = c(1:4), selected = 4, multiple = F),
+  checkboxInput('barcoded', 'Barcoded run'),
+  uiOutput('minknow_output'),
+  uiOutput('kits'),
+  tags$hr(),
+  #selectizeInput('gpus', 'GPUs to use', choices = c('cuda:all', 'cuda:1,2', 'metal', 'cpu'), selected = 'metal', multiple = F),
+  
   actionButton('start', 'Start dorado (new session)'),
   actionButton('show_session', 'Show session pane'),
-  actionButton('close', 'Close session'),
-  actionButton('ctrlc', 'Send ctrl-c to session')
+  actionButton('ctrlc', 'Send ctrl-c to session'),
+  actionButton('kill', 'Kill session'),
 )
 
 ui <- page_navbar(
@@ -62,6 +70,7 @@ server <- function(input, output, session) {
     started = NA,
     runtime = NA,
     command = NA,
+    active = NA,
     attached = NA,
     session_path = NA
   )
@@ -74,27 +83,22 @@ server <- function(input, output, session) {
     options(warn = oldw)
     
     if (any(str_detect(tmuxinfo, 'no server|error'))) {
-      data.frame(
-        session_id = NA,
-        started = NA,
-        runtime = NA,
-        command = NA,
-        attached = NA,
-        session_path = NA
-      )
+      empty_df
     } else {
       data.frame(
         session_id = str_split_i(tmuxinfo, " ", 2),
         started = str_split_i(tmuxinfo, " ", 1) %>% as.numeric() %>% as.POSIXct(),
         runtime = NA,
         command = str_split_i(tmuxinfo, " ", 5),
+        active = str_split_i(tmuxinfo, " ", 6),
         attached = str_split_i(tmuxinfo, " ", 3),
         session_path = str_split_i(tmuxinfo, " ", 4)
       ) %>%
        mutate(
          runtime = difftime(now(), started, units = 'hours'),
          attached = if_else(as.numeric(attached) == 1, 'yes', 'no')
-       ) 
+      ) %>%
+       arrange(started)
     }
   })
   
@@ -103,6 +107,7 @@ server <- function(input, output, session) {
   })
   
   # observers
+  
   # start basecalling
   observeEvent(input$start, {
     
@@ -113,36 +118,49 @@ server <- function(input, output, session) {
     args1 <- c('new', '-d', '-s', new_session_name)
     system2('tmux', args = args1)
     
+    rec <- ifelse(input$recursive, '-r', '')
+    folders <- ifelse(input$folder_output, '-f', '')
+    kit <- ifelse(input$barcoded, paste0('-k', input$kit), '')
+    
     # execute dorado in the new session
-    string <- paste('ont-basecall.sh', 'Space', '-p', 'Space', pod5dir, 'Space',  '-m', 'Space', input$model, sep = ' ')
+    string <- paste(
+      'ont-basecall.sh', 'Space', '-p', 'Space', pod5dir, 'Space',  
+      '-m', 'Space', input$model, 'Space', rec, 'Space', kit, 'Space', folders, sep = ' '
+      )
     args2 <- c('send-keys', '-t', new_session_name, string, 'C-m')
     system2('tmux', args = args2)
   })
   
   # attach
-  observeEvent(input$show_session, {
+   observeEvent(input$show_session, {
+   #observe({
     session_selected <- tmux_sessions()[selected(), ]$session_id
-    
+    # args <- c('capture-pane', '-pt', session_selected)
+    # out <- system2('tmux', args = args, stdout = T, stderr = T)
+    # shinyjs::html('stdout', out, add = T)
     withCallingHandlers({
       shinyjs::html(id = "stdout", "")
       #args <- paste0(' a', ' -t ', session_selected)
       args <- c('capture-pane', '-pt', session_selected)
-      processx::run(
+
+      p <- processx::run(
         'tmux', args = args,
-        stdout_line_callback = function(line, proc) {message(line)},
+        stdout_callback = function(line, proc) {message(line)},
+        #stdout_line_callback = function(line, proc) {message(line)},
         stderr_to_stdout = TRUE,
         error_on_status = FALSE
       )
     },
     message = function(m) {
-      shinyjs::html(id = "stdout", html = m$message, add = TRUE)
-      runjs("document.getElementById('stdout').scrollTo(0,1e9);")
+      shinyjs::html(id = "stdout", html = m$message, add = FALSE);
+      #runjs("document.getElementById('stdout').scrollTo(0,document.body.scrollHeight);")
+      #runjs("document.getElementById('stdout').scrollTo(0,1e9);")
       }
     )
   })
   
   # close session
-  observeEvent(input$close, {
+  observeEvent(input$kill, {
     session_selected <- tmux_sessions()[selected(), ]$session_id
     args <- paste0('kill-session -t ', session_selected)
     if (!is.null(selected())) {
@@ -161,12 +179,26 @@ server <- function(input, output, session) {
   })
   
   # outputs
+  # show kits if barcoded run
+  output$kits <- renderUI({
+    if (input$barcoded) {
+      selectizeInput('kit', 'Barcoding kit', choices = barcoding_kits, selected = 'SQK-RBK114-96')
+    } else {
+      NULL
+    }
+  })
+  
+  output$minknow_output <- renderUI({
+    if (input$barcoded) {
+      checkboxInput('folder_output', 'Output in folders', value = TRUE)
+    }
+  })
   output$tmux_table <- renderReactable({
     reactable(
       empty_df,
       #tmux_sessions(), 
       pagination = FALSE, highlight = TRUE, height = 200, compact = T, 
-      fullWidth = T, selection = 'single', onClick = 'select',
+      fullWidth = T, selection = 'single', onClick = 'select', defaultSelected = 1,
       theme = reactableTheme(
         rowSelectedStyle = list(backgroundColor = "#eee", boxShadow = "inset 2px 0 0 0 #ffa62d")
       ),
