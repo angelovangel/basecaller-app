@@ -11,6 +11,7 @@ library(processx)
 library(reactable)
 library(lubridate)
 library(shinyFiles)
+library(shinyWidgets)
 library(digest)
 
 # global
@@ -18,6 +19,7 @@ barcoding_kits <- read.csv('data/kits.csv')$kit
 
 sidebar <- sidebar(
   title = "Controls",
+  selectizeInput('gpus', 'GPUs on machine', choices = c(1:4), selected = 4, multiple = F),
   selectizeInput(
     "model", "Select dorado model",
     choices = c('fast', 'hac', 'sup')
@@ -28,7 +30,6 @@ sidebar <- sidebar(
   uiOutput('minknow_output'),
   uiOutput('kits'),
   tags$hr(),
-  #selectizeInput('gpus', 'GPUs to use', choices = c('cuda:all', 'cuda:1,2', 'metal', 'cpu'), selected = 'metal', multiple = F),
   
   actionButton('start', 'Start dorado (new session)'),
   actionButton('show_session', 'Show session pane'),
@@ -42,17 +43,28 @@ ui <- page_navbar(
   title = 'ONT basecaller app',
   theme = bs_theme(font_scale = 0.9, bootswatch = 'yeti', primary = '#2C3E50'),
   sidebar = sidebar,
-  nav_panel(title = "",
-  card(max_height = '250px',
-  reactableOutput('tmux_table')
-  ),
-  card(max_height = '400px',
-  verbatimTextOutput('stdout')
-  )
+  nav_panel(
+    #fluidRow(
+      uiOutput('progressbars'),
+      # lapply(1:4, function(x) {
+      #   column(width = 3, progressBar(id = paste0('pb', x), value = 23, status = 'warning', display_pct = F))
+      # })
+    #),
+    
+    title = "",
+    card(max_height = '250px',
+    reactableOutput('tmux_table')
+    ),
+    card(max_height = '400px',
+    verbatimTextOutput('stdout')
+    )
   )
 )
 
 server <- function(input, output, session) {
+  oldpath <- Sys.getenv('PATH')
+  Sys.setenv(PATH = paste(oldpath, '/opt/homebrew/bin', sep = ":"))
+  
   # shiny files
   volumes <- c(Home = fs::path_home(), getVolumes()())
   shinyDirChoose(
@@ -62,6 +74,10 @@ server <- function(input, output, session) {
     )
   
   # reactives
+  newLines <- reactive({
+    invalidateLater(1000, session)
+    readLines('data/smi.txt') %>% as.numeric() %>% tail(4)
+  })
   
   # track tmux sessions
   # empty df for init
@@ -107,6 +123,16 @@ server <- function(input, output, session) {
   })
   
   # observers
+  
+  # make progress bars
+  output$progressbars <- renderUI({
+    values <- newLines()
+    fluidRow(
+     lapply(1:input$gpus, function(x) {
+       column(width = 12/as.numeric(input$gpus), progressBar(id = paste0('pb', x), value = values[x], status = 'warning', display_pct = F))
+     })
+    )
+  })
   
   # start basecalling
   observeEvent(input$start, {
@@ -176,6 +202,14 @@ server <- function(input, output, session) {
       system2('tmux', args = args)
     }
     
+  })
+  
+  observe({
+    if (input$barcoded) {
+      updateCheckboxInput('recursive', value = T, session = session)
+    } else {
+      updateCheckboxInput('recursive', value = F, session = session)
+    }
   })
   
   # outputs
