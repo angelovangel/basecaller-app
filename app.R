@@ -12,6 +12,7 @@ library(reactable)
 library(lubridate)
 library(shinyFiles)
 library(shinyWidgets)
+library(shinybusy)
 library(digest)
 
 # global
@@ -45,6 +46,20 @@ sidebar <- sidebar(
 )
 
 ui <- page_navbar(
+  tags$head(
+    tags$style(
+      ".progress {
+          //background-image: linear-gradient(to right, orange , red) !important;
+          //background-size: auto 100%;
+          //color: black;
+      }
+      .progress-bar {
+        background-color: orange;
+        opacity: 0.9;
+        color: white;
+      }")
+  ),
+  
   useShinyjs(),
   fillable = T,
   title = 'ONT basecaller app',
@@ -141,13 +156,23 @@ server <- function(input, output, session) {
   
   # make progress bars
   output$progressbars <- renderUI({
-    values <- newLines()
+    gpuvalues <- newLines()
     fluidRow(
-     lapply(1:input$gpus, function(x) {
-       column(width = 12/as.numeric(input$gpus), progressBar(id = paste0('pb', x), value = values[x], status = 'warning', display_pct = F))
+     lapply(1:input$gpus, function(x, status) {
+       if (gpuvalues[x] < 33) {
+         status <- 'success'
+       } else if (gpuvalues[x] >=33 & gpuvalues[x] < 66) {
+         status <- 'warning'
+       } else {
+         status <- 'danger'
+       }
+       column(
+         width = 12/as.numeric(input$gpus), 
+         progressBar(id = paste0('pb', x), value = gpuvalues[x], display_pct = T))
      })
     )
   })
+  
   
   # start basecalling
   observeEvent(input$start, {
@@ -170,6 +195,7 @@ server <- function(input, output, session) {
       )
     args2 <- c('send-keys', '-t', new_session_name, string, 'C-m')
     system2('tmux', args = args2)
+    notify_success(text = paste0('Started session ', new_session_name), timeout = 2000, position = 'center-bottom')
   })
   
   # attach
@@ -206,6 +232,9 @@ server <- function(input, output, session) {
     args <- paste0('kill-session -t ', session_selected)
     if (!is.null(selected())) {
       system2('tmux', args = args)
+      notify_success(text = paste0('Session ', session_selected, ' killed!'), timeout = 2000, position = 'center-bottom')
+    } else{
+      notify_failure('Select session first!', timeout = 2000, position = 'center-bottom')
     }  
   })
   
@@ -215,6 +244,9 @@ server <- function(input, output, session) {
     args <- paste0('send-keys -t ', session_selected, ' C-c')
     if (!is.null(selected())) {
       system2('tmux', args = args)
+      notify_success(text = paste0('Ctrl-C sent to session ', session_selected), timeout = 2000, position = 'center-bottom')
+    } else {
+      notify_failure('Select session first!', timeout = 2000, position = 'center-bottom')
     }
     
   })
