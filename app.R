@@ -17,6 +17,13 @@ library(digest)
 # global
 barcoding_kits <- read.csv('data/kits.csv')$kit
 
+# to handle tmux and nvidia-smi executables availability on macos and linux
+is_bin_on_path = function(bin) {
+  exit_code = suppressWarnings(system2("command", args = c("-v", bin), stdout = FALSE))
+  return(exit_code == 0)
+}
+
+
 sidebar <- sidebar(
   title = "Controls",
   selectizeInput('gpus', 'GPUs on machine', choices = c(1:4), selected = 4, multiple = F),
@@ -62,8 +69,10 @@ ui <- page_navbar(
 )
 
 server <- function(input, output, session) {
-  oldpath <- Sys.getenv('PATH')
-  Sys.setenv(PATH = paste(oldpath, '/opt/homebrew/bin', sep = ":"))
+  if (!is_bin_on_path('tmux')){
+    oldpath <- Sys.getenv('PATH')
+    Sys.setenv(PATH = paste(oldpath, '/opt/homebrew/bin', sep = ":"))
+  }
   
   # shiny files
   volumes <- c(Home = fs::path_home(), getVolumes()())
@@ -74,9 +83,15 @@ server <- function(input, output, session) {
     )
   
   # reactives
+  if (is_bin_on_path('nvidia-smi')) {
+    cmd <- 'nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits'
+  } else {
+    cmd <- 'tail -n 4 data/smi.txt'
+  }
+  
   newLines <- reactive({
     invalidateLater(1000, session)
-    readLines('data/smi.txt') %>% as.numeric() %>% tail(4)
+    readLines(pipe(cmd)) %>% as.numeric() %>% tail(as.numeric(input$gpus))
   })
   
   # track tmux sessions
