@@ -37,7 +37,7 @@ sidebar <- sidebar(
   checkboxInput('barcoded', 'Barcoded run'),
   uiOutput('minknow_output'),
   uiOutput('kits'),
-  tags$hr(),
+  #tags$hr(),
   
   actionButton('start', 'Start dorado (new session)'),
   actionButton('show_session', 'Show session pane'),
@@ -67,14 +67,9 @@ ui <- page_navbar(
   theme = bs_theme(font_scale = 0.9, bootswatch = 'yeti', primary = '#2C3E50'),
   sidebar = sidebar,
   nav_panel(
-    #fluidRow(
-      uiOutput('progressbars'),
-      # lapply(1:4, function(x) {
-      #   column(width = 3, progressBar(id = paste0('pb', x), value = 23, status = 'warning', display_pct = F))
-      # })
-    #),
-    
     title = "",
+    uiOutput('progressbars'),
+    verbatimTextOutput('pod5_selected'),
     card(max_height = '250px',
     reactableOutput('tmux_table')
     ),
@@ -169,7 +164,7 @@ server <- function(input, output, session) {
        }
        column(
          width = 12/as.numeric(input$gpus), 
-         progressBar(id = paste0('pb', x), value = 100 - gpuvalues[x], display_pct = F))
+         progressBar(id = paste0('pb', x), value = 100 - gpuvalues[x], display_pct = F, title = paste0('GPU', x)))
      })
     )
   })
@@ -317,6 +312,15 @@ server <- function(input, output, session) {
       paste0(
         'Selected pod5 directory: ', pod5dir, '\n',
         pod5files, ' pod5 files found')
+    }
+  })
+  
+  output$pod5_selected <- renderText({
+    if (is.integer(input$pod5)) {
+      "No directory has been selected"
+    } else {
+      pod5dir <- parseDirPath(volumes, input$pod5)
+      pod5dir
     }
   })
 
