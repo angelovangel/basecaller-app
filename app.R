@@ -49,17 +49,18 @@ ui <- page_navbar(
   tags$head(
     tags$style(
       ".progress {
-          //background-image: linear-gradient(to right, orange , red) !important;
-          //background-size: auto 100%;
-          //color: black;
+          transform: rotate(180deg);
+          background: linear-gradient(to left, yellow 0%, red 100%);
+        //background-color: orange;
+        //opacity: 0.9;
+        //color: white;
       }
       .progress-bar {
-        background-color: orange;
-        opacity: 0.9;
-        color: white;
-      }")
+        background: #EAECEE;
+      }
+      ")
   ),
-  
+
   useShinyjs(),
   fillable = T,
   title = 'ONT basecaller app',
@@ -168,7 +169,7 @@ server <- function(input, output, session) {
        }
        column(
          width = 12/as.numeric(input$gpus), 
-         progressBar(id = paste0('pb', x), value = gpuvalues[x], display_pct = T))
+         progressBar(id = paste0('pb', x), value = 100 - gpuvalues[x], display_pct = F))
      })
     )
   })
