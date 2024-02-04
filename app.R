@@ -90,7 +90,7 @@ server <- function(input, output, session) {
   default_path <- Sys.getenv('DEFAULT_PATH')
   shinyDirChoose(
     input, "pod5", 
-    roots = volumes, defaultPath = default_path,
+    roots = volumes, #defaultPath = default_path,
     session = session, allowDirCreate = FALSE
     )
   
