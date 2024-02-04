@@ -86,7 +86,8 @@ server <- function(input, output, session) {
   }
   
   # shiny files
-  volumes <- c(getVolumes()())
+  default_path <- Sys.getenv('DEFAULT_PATH')
+  volumes <- c(ont_data = default_path, getVolumes()())
   default_path <- Sys.getenv('DEFAULT_PATH')
   shinyDirChoose(
     input, "pod5", 
