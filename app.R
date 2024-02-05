@@ -38,7 +38,7 @@ sidebar <- sidebar(
   uiOutput('minknow_output'),
   uiOutput('kits'),
   #tags$hr(),
-  
+  textInput('session_name', 'Name for new session (optional)', value = 'tgs'),
   actionButton('start', 'Start dorado (new session)'),
   actionButton('show_session', 'Show session pane'),
   actionButton('ctrlc', 'Send ctrl-c to session'),
@@ -175,7 +175,7 @@ server <- function(input, output, session) {
   # start basecalling
   observeEvent(input$start, {
     
-    new_session_name <- digest::digest(runif(1), algo = 'crc32')
+    new_session_name <- paste0(digest::digest(runif(1), algo = 'crc32'), '-', input$session_name)
     pod5dir <- parseDirPath(volumes, input$pod5)
     # launch new session
     
