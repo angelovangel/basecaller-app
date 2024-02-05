@@ -218,8 +218,8 @@ server <- function(input, output, session) {
     },
     message = function(m) {
       shinyjs::html(id = "stdout", html = m$message, add = FALSE);
-      #runjs("document.getElementById('stdout').scrollTo(0,document.body.scrollHeight);")
-      #runjs("document.getElementById('stdout').scrollTo(0,1e9);")
+      #runjs("document.getElementById('stdout').parentElement.scrollTo(0,1e9);")
+      runjs("document.getElementById('stdout').parentElement.scrollTo({ top: 1e9, behavior: 'smooth' });")
       }
     )
   })
