@@ -206,7 +206,7 @@ server <- function(input, output, session) {
     withCallingHandlers({
       shinyjs::html(id = "stdout", "")
       #args <- paste0(' a', ' -t ', session_selected)
-      args <- c('capture-pane', '-pt', session_selected)
+      args <- c('capture-pane', '-S', '-', '-E', '-', '-pt', session_selected)
 
       p <- processx::run(
         'tmux', args = args,
