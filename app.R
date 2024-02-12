@@ -28,6 +28,7 @@ is_bin_on_path = function(bin) {
 sidebar <- sidebar(
   title = "Controls",
   selectizeInput('gpus', 'GPUs on machine', choices = c(1:4), selected = 4, multiple = F),
+  checkboxInput('duplex', 'Duplex basecalling', value = F),
   selectizeInput(
     "model", "Select dorado model",
     choices = c('fast', 'hac', 'sup')
@@ -188,7 +189,7 @@ server <- function(input, output, session) {
     
     # execute dorado in the new session
     string <- paste(
-      'ont-basecall.sh', 'Space', '-p', 'Space', pod5dir, 'Space',  
+      dorado_script(), 'Space', '-p', 'Space', pod5dir, 'Space',  
       '-m', 'Space', input$model, 'Space', rec, 'Space', kit, 'Space', folders, sep = ' '
       )
     args2 <- c('send-keys', '-t', new_session_name, string, 'C-m')
@@ -200,24 +201,21 @@ server <- function(input, output, session) {
    observeEvent(input$show_session, {
    #observe({
     session_selected <- tmux_sessions()[selected(), ]$session_id
-    # args <- c('capture-pane', '-pt', session_selected)
-    # out <- system2('tmux', args = args, stdout = T, stderr = T)
-    # shinyjs::html('stdout', out, add = T)
+    
     withCallingHandlers({
       shinyjs::html(id = "stdout", "")
-      #args <- paste0(' a', ' -t ', session_selected)
       args <- c('capture-pane', '-S', '-', '-E', '-', '-pt', session_selected)
 
       p <- processx::run(
         'tmux', args = args,
-        stdout_callback = function(line, proc) {message(line)},
-        #stdout_line_callback = function(line, proc) {message(line)},
+        #stdout_callback = function(line, proc) {message(line)},
+        stdout_line_callback = function(line, proc) {message(line)},
         stderr_to_stdout = TRUE,
         error_on_status = FALSE
       )
     },
     message = function(m) {
-      shinyjs::html(id = "stdout", html = m$message, add = FALSE);
+      shinyjs::html(id = "stdout", html = m$message, add = T);
       #runjs("document.getElementById('stdout').parentElement.scrollTo(0,1e9);")
       runjs("document.getElementById('stdout').parentElement.scrollTo({ top: 1e9, behavior: 'smooth' });")
       }
@@ -254,6 +252,17 @@ server <- function(input, output, session) {
       updateCheckboxInput('recursive', value = T, session = session)
     } else {
       updateCheckboxInput('recursive', value = F, session = session)
+    }
+  })
+  
+  dorado_script <- reactiveVal()
+  observe({
+    if (input$duplex) {
+      updateSelectizeInput('model', choices = c('hac', 'sup'), session = session)
+      dorado_script('ont-duplex-basecall.sh')
+    } else {
+      updateSelectizeInput('model', choices = c('fast', 'hac', 'sup'), session = session)
+      dorado_script('ont-basecall.sh')
     }
   })
   
