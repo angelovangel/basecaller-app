@@ -14,6 +14,7 @@ library(shinyFiles)
 library(shinyWidgets)
 library(shinybusy)
 library(digest)
+library(hover)
 
 # global
 barcoding_kits <- read.csv('data/kits.csv')$kit
@@ -40,10 +41,10 @@ sidebar <- sidebar(
   uiOutput('kits'),
   #tags$hr(),
   textInput('session_name', 'Name for new session (optional)', value = 'tgs'),
-  actionButton('start', 'Start dorado (new session)'),
-  actionButton('show_session', 'Show session pane'),
-  actionButton('ctrlc', 'Send ctrl-c to session'),
-  actionButton('kill', 'Kill session'),
+  hover_action_button('start', 'Start dorado (new session)', button_animation = 'overline-reveal'),
+  hover_action_button('show_session', 'Show session pane', button_animation = 'overline-reveal'),
+  hover_action_button('ctrlc', 'Send ctrl-c to session', button_animation = 'overline-reveal'),
+  hover_action_button(inputId = 'kill', label = 'Kill session', button_animation = 'overline-reveal'),
 )
 
 ui <- page_navbar(
@@ -63,6 +64,7 @@ ui <- page_navbar(
   ),
 
   useShinyjs(),
+  use_hover(),
   fillable = T,
   title = 'ONT basecaller app',
   theme = bs_theme(font_scale = 0.9, bootswatch = 'yeti', primary = '#2C3E50'),

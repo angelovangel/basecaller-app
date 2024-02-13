@@ -276,6 +276,18 @@
       ],
       "Hash": "06230136b2d2b9ba5805e1963fa6e890"
     },
+    "hover": {
+      "Package": "hover",
+      "Version": "0.1.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "htmltools",
+        "shiny"
+      ],
+      "Hash": "a12053617a91f2abc5fadde6d0563427"
+    },
     "htmltools": {
       "Package": "htmltools",
       "Version": "0.5.7",
