@@ -263,7 +263,11 @@ server <- function(input, output, session) {
       updateSelectizeInput('model', choices = c('hac', 'sup'), session = session)
       dorado_script('ont-duplex-basecall.sh')
     } else {
-      updateSelectizeInput('model', choices = c('fast', 'hac', 'sup'), session = session)
+      updateSelectizeInput(
+        'model',
+        # research model stored locally in the app, under data/models
+        choices = c('fast', 'hac', 'sup', 'res' = 'data/models/res_dna_r10.4.1_e8.2_400bps_sup@2023-09-22_bacterial-methylation'), 
+        session = session)
       dorado_script('ont-basecall.sh')
     }
   })
