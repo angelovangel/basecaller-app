@@ -297,7 +297,7 @@ server <- function(input, output, session) {
       pagination = FALSE, highlight = TRUE, height = 200, compact = T, 
       fullWidth = T, selection = 'single', onClick = 'select', defaultSelected = 1,
       theme = reactableTheme(
-        rowSelectedStyle = list(backgroundColor = "#eee", boxShadow = "inset 2px 0 0 0 #ffa62d")
+        rowSelectedStyle = list(backgroundColor = "#eee", boxShadow = "inset 2px 0 0 0 #ff0000")
       ),
       columns = list(
         started = colDef(format = colFormat(datetime = T, locales = 'en-GB')),
