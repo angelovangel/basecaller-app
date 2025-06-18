@@ -52,7 +52,7 @@ ui <- page_navbar(
     tags$style(
       ".progress {
           transform: rotate(180deg);
-          background: linear-gradient(to left, yellow 0%, red 100%);
+          background: linear-gradient(to left, rgba(234, 236, 238), rgba(255,0,0,1));
         //background-color: orange;
         //opacity: 0.9;
         //color: white;
@@ -72,7 +72,7 @@ ui <- page_navbar(
   nav_panel(
     title = "",
     uiOutput('progressbars'),
-    verbatimTextOutput('pod5_selected'),
+    #verbatimTextOutput('pod5_selected'),
     card(max_height = '250px',
     reactableOutput('tmux_table')
     ),
@@ -98,17 +98,6 @@ server <- function(input, output, session) {
     session = session, allowDirCreate = FALSE
     )
   
-  # reactives
-  if (is_bin_on_path('nvidia-smi')) {
-    cmd <- 'nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits'
-  } else {
-    cmd <- 'tail -n 4 data/smi.txt'
-  }
-  
-  newLines <- reactive({
-    invalidateLater(1000, session)
-    readLines(pipe(cmd)) %>% as.numeric() %>% tail(as.numeric(input$gpus))
-  })
   
   # track tmux sessions
   # empty df for init
@@ -153,27 +142,41 @@ server <- function(input, output, session) {
     getReactableState('tmux_table', 'selected')
   })
   
-  # observers
+  
+  # progress bars
+  if (is_bin_on_path('nvidia-smi')) {
+    cmd <- 'nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits'
+  } else {
+    cmd <- 'tail -n 4 data/smi.txt'
+  }
+  
+  newLines <- reactive({
+    invalidateLater(1000, session)
+    readLines(pipe(cmd)) %>% as.numeric() %>% tail(as.numeric(input$gpus))
+  })
   
   # make progress bars
   output$progressbars <- renderUI({
-    gpuvalues <- newLines()
+    values <- rep(10, input$gpus) #newLines()
     fluidRow(
-     lapply(1:input$gpus, function(x, status) {
-       if (gpuvalues[x] < 33) {
-         status <- 'success'
-       } else if (gpuvalues[x] >=33 & gpuvalues[x] < 66) {
-         status <- 'warning'
-       } else {
-         status <- 'danger'
-       }
+     lapply(1:input$gpus, function(x) {
        column(
          width = 12/as.numeric(input$gpus), 
-         progressBar(id = paste0('pb', x), value = 100 - gpuvalues[x], display_pct = F, title = paste0('GPU', x)))
+         progressBar(id = paste0('pb', x), value = 100 - values[x], display_pct = F, title = paste0('GPU', x)))
      })
     )
   })
   
+  observe({
+    gpuvalues <- newLines()
+    lapply(1:input$gpus, function(x) {
+      updateProgressBar(
+        session = session,
+        id = paste0('pb', x),
+        value = 100 - gpuvalues[x], title = paste0('GPU', x)
+      )
+    })
+  })
   
   # start basecalling
   observeEvent(input$start, {
