@@ -103,9 +103,9 @@ server <- function(input, output, session) {
   # empty df for init
   empty_df <- data.frame(
     session_id = NA,
+    user = NA,
     started = NA,
     runtime = NA,
-    #command = NA,
     active = NA,
     attached = NA,
     session_path = NA
@@ -123,17 +123,19 @@ server <- function(input, output, session) {
     } else {
       data.frame(
         session_id = str_split_i(tmuxinfo, " ", 2),
+        user = str_split_i(tmuxinfo, " ", 7),
         started = str_split_i(tmuxinfo, " ", 1) %>% as.numeric() %>% as.POSIXct(),
         runtime = NA,
-        #command = str_split_i(tmuxinfo, " ", 5),
         active = str_split_i(tmuxinfo, " ", 6),
         attached = str_split_i(tmuxinfo, " ", 3),
         session_path = str_split_i(tmuxinfo, " ", 4)
       ) %>%
        mutate(
-         runtime = difftime(now(), started, units = 'hours'),
+         runtime = difftime(now(), started, units = 'auto'),
          attached = if_else(as.numeric(attached) == 1, 'yes', 'no'),
          active = if_else(as.numeric(active) == 1, 'yes', 'no')
+      ) %>%
+       mutate(runtime = paste0(round(runtime ,1), " ", units(runtime))
       ) %>%
        arrange(started)
     }
@@ -302,7 +304,7 @@ server <- function(input, output, session) {
       ),
       columns = list(
         started = colDef(minWidth = 130, format = colFormat(datetime = T, locales = 'swe-SE')),
-        runtime = colDef(minWidth = 70, format = colFormat(suffix = ' h', digits = 2)),
+        runtime = colDef(minWidth = 70), #format = colFormat(suffix = ' h', digits = 2)),
         #command = colDef(minWidth = 50),
         active = colDef(minWidth = 70),
         attached = colDef(minWidth = 70),
