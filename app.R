@@ -105,7 +105,7 @@ server <- function(input, output, session) {
     session_id = NA,
     started = NA,
     runtime = NA,
-    command = NA,
+    #command = NA,
     active = NA,
     attached = NA,
     session_path = NA
@@ -125,14 +125,15 @@ server <- function(input, output, session) {
         session_id = str_split_i(tmuxinfo, " ", 2),
         started = str_split_i(tmuxinfo, " ", 1) %>% as.numeric() %>% as.POSIXct(),
         runtime = NA,
-        command = str_split_i(tmuxinfo, " ", 5),
+        #command = str_split_i(tmuxinfo, " ", 5),
         active = str_split_i(tmuxinfo, " ", 6),
         attached = str_split_i(tmuxinfo, " ", 3),
         session_path = str_split_i(tmuxinfo, " ", 4)
       ) %>%
        mutate(
          runtime = difftime(now(), started, units = 'hours'),
-         attached = if_else(as.numeric(attached) == 1, 'yes', 'no')
+         attached = if_else(as.numeric(attached) == 1, 'yes', 'no'),
+         active = if_else(as.numeric(active) == 1, 'yes', 'no')
       ) %>%
        arrange(started)
     }
@@ -300,8 +301,12 @@ server <- function(input, output, session) {
         rowSelectedStyle = list(backgroundColor = "#eee", boxShadow = "inset 2px 0 0 0 #ff0000")
       ),
       columns = list(
-        started = colDef(format = colFormat(datetime = T, locales = 'en-GB')),
-        runtime = colDef(format = colFormat(suffix = ' h', digits = 2))
+        started = colDef(minWidth = 130, format = colFormat(datetime = T, locales = 'swe-SE')),
+        runtime = colDef(minWidth = 70, format = colFormat(suffix = ' h', digits = 2)),
+        #command = colDef(minWidth = 50),
+        active = colDef(minWidth = 70),
+        attached = colDef(minWidth = 70),
+        session_path = colDef(minWidth = 250)
       )
     )
   })
