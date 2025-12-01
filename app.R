@@ -37,7 +37,7 @@ sidebar <- sidebar(
   shinyDirButton("pod5", "Select pod5 folder", title ='Please select a folder with signal data', multiple = F),
   checkboxInput('recursive', 'Search recursively'),
   checkboxInput('barcoded', 'Barcoded run'),
-  uiOutput('minknow_output'),
+  # uiOutput('minknow_output'),
   uiOutput('kits'),
   #tags$hr(),
   textInput('session_name', 'Name for new session (optional)', value = 'tgs'),
@@ -192,13 +192,13 @@ server <- function(input, output, session) {
     system2('tmux', args = args1)
     
     rec <- ifelse(input$recursive, '-r', '')
-    folders <- ifelse(input$folder_output, '-f', '')
+    # folders <- ifelse(input$folder_output, '-f', '')
     kit <- ifelse(input$barcoded, paste0('-k', input$kit), '')
     
     # execute dorado in the new session
     string <- paste(
       dorado_script(), 'Space', '-p', 'Space', pod5dir, 'Space',  
-      '-m', 'Space', input$model, 'Space', rec, 'Space', kit, 'Space', folders, sep = ' '
+      '-m', 'Space', input$model, 'Space', rec, 'Space', kit, sep = ' '
       )
     args2 <- c('send-keys', '-t', new_session_name, string, 'C-m')
     system2('tmux', args = args2)
@@ -288,11 +288,11 @@ server <- function(input, output, session) {
     }
   })
   
-  output$minknow_output <- renderUI({
-    if (input$barcoded) {
-      checkboxInput('folder_output', 'Output in folders', value = TRUE)
-    }
-  })
+  # output$minknow_output <- renderUI({
+  #   if (input$barcoded) {
+  #     checkboxInput('folder_output', 'Output in folders', value = TRUE)
+  #   }
+  # })
   output$tmux_table <- renderReactable({
     reactable(
       empty_df,
