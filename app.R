@@ -29,13 +29,15 @@ is_bin_on_path = function(bin) {
 sidebar <- sidebar(
   title = "Controls",
   selectizeInput('gpus', 'GPUs on machine', choices = c(1:4), selected = 4, multiple = F),
-  checkboxInput('duplex', 'Duplex basecalling', value = F),
   selectizeInput(
     "model", "Select dorado model",
     choices = c('fast', 'hac', 'sup')
   ),
+  checkboxInput('adaptive', 'Adaptive sampling run', value = F),
+  uiOutput('as_file'), #render conditionally if adaptive sampling
   shinyDirButton("pod5", "Select pod5 folder", title ='Please select a folder with signal data', multiple = F),
-  checkboxInput('recursive', 'Search recursively'),
+  checkboxInput('recursive', 'Search pod5 recursively'),
+  
   checkboxInput('barcoded', 'Barcoded run'),
   # uiOutput('minknow_output'),
   uiOutput('kits'),
@@ -97,6 +99,12 @@ server <- function(input, output, session) {
     roots = volumes, #defaultPath = default_path,
     session = session, allowDirCreate = FALSE
     )
+  
+  shinyFileChoose(
+    input, 'decision_file',
+    roots = volumes, filetypes = 'csv',
+    session = session
+  )
   
   
   # track tmux sessions
@@ -186,6 +194,7 @@ server <- function(input, output, session) {
     
     new_session_name <- paste0(digest::digest(runif(1), algo = 'crc32'), '-', input$session_name)
     pod5dir <- parseDirPath(volumes, input$pod5)
+    as_file <- parseFilePaths(volumes, input$decision_file)
     # launch new session
     
     args1 <- c('new', '-d', '-s', new_session_name)
@@ -194,11 +203,12 @@ server <- function(input, output, session) {
     rec <- ifelse(input$recursive, '-r', '')
     # folders <- ifelse(input$folder_output, '-f', '')
     kit <- ifelse(input$barcoded, paste0('-k', input$kit), '')
+    read_ids <- ifelse(input$adaptive, paste0('-l', as_file$datapath), '')
     
     # execute dorado in the new session
     string <- paste(
       dorado_script(), 'Space', '-p', 'Space', pod5dir, 'Space',  
-      '-m', 'Space', input$model, 'Space', rec, 'Space', kit, sep = ' '
+      '-m', 'Space', input$model, 'Space', rec, 'Space', kit, read_ids, sep = ' '
       )
     args2 <- c('send-keys', '-t', new_session_name, string, 'C-m')
     system2('tmux', args = args2)
@@ -264,19 +274,20 @@ server <- function(input, output, session) {
   })
   
   dorado_script <- reactiveVal()
-  observe({
-    if (input$duplex) {
-      updateSelectizeInput('model', choices = c('hac', 'sup'), session = session)
-      dorado_script('ont-duplex-basecall.sh')
-    } else {
-      updateSelectizeInput(
-        'model',
-        # research model stored locally in the app, under data/models
-        choices = c('fast', 'hac', 'sup', 'res' = 'data/models/res_dna_r10.4.1_e8.2_400bps_sup@2023-09-22_bacterial-methylation'), 
-        session = session)
-      dorado_script('ont-basecall.sh')
-    }
-  })
+  dorado_script('ont-basecall.sh')
+  # observe({
+  #   if (input$duplex) {
+  #     updateSelectizeInput('model', choices = c('hac', 'sup'), session = session)
+  #     dorado_script('ont-duplex-basecall.sh')
+  #   } else {
+  #     updateSelectizeInput(
+  #       'model',
+  #       # research model stored locally in the app, under data/models
+  #       choices = c('fast', 'hac', 'sup', 'res' = 'data/models/res_dna_r10.4.1_e8.2_400bps_sup@2023-09-22_bacterial-methylation'), 
+  #       session = session)
+  #     dorado_script('ont-basecall.sh')
+  #   }
+  # })
   
   # outputs
   # show kits if barcoded run
@@ -288,11 +299,17 @@ server <- function(input, output, session) {
     }
   })
   
-  # output$minknow_output <- renderUI({
-  #   if (input$barcoded) {
-  #     checkboxInput('folder_output', 'Output in folders', value = TRUE)
-  #   }
-  # })
+  output$as_file <- renderUI({
+    if (input$adaptive) {
+      #checkboxInput('folder_output', 'Output in folders', value = TRUE)
+      shinyFilesButton(
+        'decision_file', 
+        'AS decisions file', 
+        title = "Select adaptive sampling decisions file (AS_decisions.csv)", 
+        multiple = F)
+    }
+  })
+  
   output$tmux_table <- renderReactable({
     reactable(
       empty_df,
