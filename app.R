@@ -1,5 +1,6 @@
 library(shiny)
 library(shinyWidgets)
+library(shinymanager)
 library(bslib)
 library(bsicons)
 library(shinyjs)
@@ -84,7 +85,16 @@ ui <- page_navbar(
   )
 )
 
+### secure app -----------------------------###
+ui <- secure_app(ui,theme = "simplex")
+credentials <- readRDS("credentials.rds")
+
 server <- function(input, output, session) {
+  
+  res_auth <- secure_server(
+    check_credentials = check_credentials(credentials)
+  )
+
   if (!is_bin_on_path('tmux')){
     oldpath <- Sys.getenv('PATH')
     Sys.setenv(PATH = paste(oldpath, '/opt/homebrew/bin', sep = ":"))
@@ -162,12 +172,14 @@ server <- function(input, output, session) {
   }
   
   newLines <- reactive({
+    req(input$gpus)
     invalidateLater(1000, session)
     readLines(pipe(cmd)) %>% as.numeric() %>% tail(as.numeric(input$gpus))
   })
   
   # make progress bars
   output$progressbars <- renderUI({
+    req(input$gpus)
     values <- rep(10, input$gpus) #newLines()
     fluidRow(
      lapply(1:input$gpus, function(x) {
@@ -179,6 +191,7 @@ server <- function(input, output, session) {
   })
   
   observe({
+    req(input$gpus)
     gpuvalues <- newLines()
     lapply(1:input$gpus, function(x) {
       updateProgressBar(
@@ -266,6 +279,7 @@ server <- function(input, output, session) {
   })
   
   observe({
+    req(input$barcoded)
     if (input$barcoded) {
       updateCheckboxInput('recursive', value = T, session = session)
     } else {
@@ -292,6 +306,7 @@ server <- function(input, output, session) {
   # outputs
   # show kits if barcoded run
   output$kits <- renderUI({
+    req(input$barcoded)
     if (input$barcoded) {
       selectizeInput('kit', 'Barcoding kit', choices = barcoding_kits, selected = 'SQK-RBK114-96')
     } else {
@@ -300,6 +315,7 @@ server <- function(input, output, session) {
   })
   
   output$as_file <- renderUI({
+    req(input$adaptive)
     if (input$adaptive) {
       #checkboxInput('folder_output', 'Output in folders', value = TRUE)
       shinyFilesButton(
@@ -336,6 +352,7 @@ server <- function(input, output, session) {
   
   # handle pod5 directory
   observe({
+    req(input$pod5)
     if (is.integer(input$pod5)) {
       shinyjs::disable('start')
     } else {
@@ -348,6 +365,7 @@ server <- function(input, output, session) {
   })
   
   output$stdout <- renderText({
+    req(input$pod5)
     if (is.integer(input$pod5)) {
       "No directory has been selected"
     } else {
@@ -360,6 +378,7 @@ server <- function(input, output, session) {
   })
   
   output$pod5_selected <- renderText({
+    req(input$pod5)
     if (is.integer(input$pod5)) {
       "No directory has been selected"
     } else {
