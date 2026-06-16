@@ -34,6 +34,7 @@ sidebar <- sidebar(
     "model", "Select dorado model",
     choices = c('fast', 'hac', 'sup')
   ),
+  selectizeInput('readformat', 'Output format', choices = c('fastq', 'bam'), selected = 'fastq'),
   checkboxInput('adaptive', 'Adaptive sampling run', value = F),
   uiOutput('as_file'), #render conditionally if adaptive sampling
   shinyDirButton("pod5", "Select pod5 folder", title ='Please select a folder with signal data', multiple = F),
@@ -213,17 +214,15 @@ server <- function(input, output, session) {
     args1 <- c('new', '-d', '-s', new_session_name)
     system2('tmux', args = args1)
     
-    rec <- ifelse(input$recursive, '-r', '')
-    # folders <- ifelse(input$folder_output, '-f', '')
-    kit <- ifelse(input$barcoded, paste0('-k', input$kit), '')
-    read_ids <- ifelse(input$adaptive, paste0('-l', as_file$datapath), '')
+    cmd_args <- c(dorado_script(), '-p', pod5dir, '-m', input$model)
+    if (input$recursive) cmd_args <- c(cmd_args, '-r')
+    if (input$barcoded) cmd_args <- c(cmd_args, paste0('-k', input$kit))
+    if (input$adaptive) cmd_args <- c(cmd_args, paste0('-l', as_file$datapath))
+    if (input$readformat == 'bam') cmd_args <- c(cmd_args, '-b')
     
     # execute dorado in the new session
-    string <- paste(
-      dorado_script(), 'Space', '-p', 'Space', pod5dir, 'Space',  
-      '-m', 'Space', input$model, 'Space', rec, 'Space', kit, read_ids, sep = ' '
-      )
-    args2 <- c('send-keys', '-t', new_session_name, string, 'C-m')
+    string <- paste(cmd_args, collapse = ' ')
+    args2 <- c('send-keys', '-t', new_session_name, shQuote(string), 'C-m')
     system2('tmux', args = args2)
     notify_success(text = paste0('Started session ', new_session_name), timeout = 2000, position = 'center-bottom')
   })
