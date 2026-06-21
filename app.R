@@ -35,6 +35,7 @@ sidebar <- sidebar(
     choices = c('fast', 'hac', 'sup')
   ),
   selectizeInput('readformat', 'Output format', choices = c('fastq', 'bam'), selected = 'fastq'),
+  uiOutput('mods'),
   checkboxInput('adaptive', 'Adaptive sampling run', value = F),
   uiOutput('as_file'), #render conditionally if adaptive sampling
   shinyDirButton("pod5", "Select pod5 folder", title ='Please select a folder with signal data', multiple = F),
@@ -214,7 +215,17 @@ server <- function(input, output, session) {
     args1 <- c('new', '-d', '-s', new_session_name)
     system2('tmux', args = args1)
     
-    cmd_args <- c(dorado_script(), '-p', pod5dir, '-m', input$model)
+    # build model argument; combine model and any selected mod(s), excluding 'none'
+    mods_vec <- input$model
+    # only append selected mods when BAM output and model is not 'fast'
+    if (!is.null(input$readformat) && input$readformat == 'bam' && !is.null(input$mod) && input$model != 'fast') {
+      mods_vec <- c(mods_vec, input$mod)
+    }
+    mods_vec <- unlist(mods_vec)
+    mods_vec <- mods_vec[!is.na(mods_vec) & mods_vec != '' & mods_vec != 'none']
+    model_arg <- paste(mods_vec, collapse = ',')
+    if (model_arg == '') model_arg <- input$model
+    cmd_args <- c(dorado_script(), '-p', pod5dir, '-m', model_arg)
     if (input$recursive) cmd_args <- c(cmd_args, '-r')
     if (input$barcoded) cmd_args <- c(cmd_args, paste0('-k', input$kit))
     if (input$adaptive) cmd_args <- c(cmd_args, paste0('-l', as_file$datapath))
@@ -288,19 +299,6 @@ server <- function(input, output, session) {
   
   dorado_script <- reactiveVal()
   dorado_script('ont-basecall.sh')
-  # observe({
-  #   if (input$duplex) {
-  #     updateSelectizeInput('model', choices = c('hac', 'sup'), session = session)
-  #     dorado_script('ont-duplex-basecall.sh')
-  #   } else {
-  #     updateSelectizeInput(
-  #       'model',
-  #       # research model stored locally in the app, under data/models
-  #       choices = c('fast', 'hac', 'sup', 'res' = 'data/models/res_dna_r10.4.1_e8.2_400bps_sup@2023-09-22_bacterial-methylation'), 
-  #       session = session)
-  #     dorado_script('ont-basecall.sh')
-  #   }
-  # })
   
   # outputs
   # show kits if barcoded run
@@ -324,6 +322,33 @@ server <- function(input, output, session) {
         multiple = F)
     }
   })
+
+  # show modification models only when BAM output is selected
+  output$mods <- renderUI({
+    req(input$readformat, input$model)
+    # only show modification selection for BAM output and non-fast models
+    if (input$readformat == 'bam' && input$model != 'fast') {
+      selectizeInput(
+        'mod', 'Modification model',
+        choices = c('none', '4mC_5mC', '5mCG_5hmCG', '5mC_5hmC', '6mA'),
+        selected = 'none',
+        multiple = TRUE
+      )
+    } else {
+      NULL
+    }
+  })
+
+  # auto-remove 'none' if any other modification is selected
+  observeEvent(input$mod, {
+    sel <- input$mod
+    if (is.null(sel)) return()
+    # when multiple mods selected and 'none' is among them, drop 'none'
+    if (length(sel) > 1 && 'none' %in% sel) {
+      newsel <- sel[sel != 'none']
+      updateSelectizeInput(session, 'mod', selected = newsel)
+    }
+  }, ignoreNULL = TRUE, ignoreInit = TRUE)
   
   output$tmux_table <- renderReactable({
     reactable(
