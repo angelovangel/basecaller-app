@@ -30,6 +30,7 @@ is_bin_on_path = function(bin) {
 sidebar <- sidebar(
   title = "Controls",
   selectizeInput('gpus', 'GPUs on machine', choices = c(1:4), selected = 4, multiple = F),
+  uiOutput('nucleic'),
   selectizeInput(
     "model", "Select dorado model",
     choices = c('fast', 'hac', 'sup')
@@ -323,19 +324,56 @@ server <- function(input, output, session) {
     }
   })
 
-  # show modification models only when BAM output is selected
-  output$mods <- renderUI({
+  # nucleic acid selection (dna | rna)
+  output$nucleic <- renderUI({
     req(input$readformat, input$model)
-    # only show modification selection for BAM output and non-fast models
+      selectInput('nucleic', 'Nucleic acid', choices = c('dna', 'rna'), selected = 'dna')
+  })
+
+  # show modification models only when BAM output is selected and model != 'fast'
+  output$mods <- renderUI({
+    req(input$readformat, input$model, input$nucleic)
     if (input$readformat == 'bam' && input$model != 'fast') {
-      selectizeInput(
-        'mod', 'Modification model',
-        choices = c('none', '4mC_5mC', '5mCG_5hmCG', '5mC_5hmC', '6mA'),
-        selected = 'none',
-        multiple = TRUE
-      )
+      # define choices based on nucleic and model
+      dna_choices <- c('none', '4mC_5mC', '5mCG_5hmCG', '5mC_5hmC', '6mA')
+      rna_hac_choices <- c('none', 'm5C', 'm6A_DRACH', 'inosine_m6A', 'pseU')
+      rna_sup_choices <- c('none', 'm5C_2OmeC', 'm6A_DRACH', 'inosine_m6A_2OmeA', 'pseU_2OmeU', '2OmeG')
+
+      choices <- switch(input$nucleic,
+                        'dna' = dna_choices,
+                        'rna' = if (input$model == 'hac') rna_hac_choices else if (input$model == 'sup') rna_sup_choices else c('none'))
+
+      selectizeInput('mod', 'Modification model', choices = choices, selected = 'none', multiple = TRUE)
     } else {
       NULL
+    }
+  })
+
+  # ensure mod choices/selection stay valid when model or nucleic changes
+  observe({
+    req(input$readformat, input$model)
+    if (!(input$readformat == 'bam' && input$model != 'fast')) {
+      return()
+    }
+    # compute allowed choices
+    dna_choices <- c('none', '4mC_5mC', '5mCG_5hmCG', '5mC_5hmC', '6mA')
+    rna_hac_choices <- c('none', 'm5C', 'm6A_DRACH', 'inosine_m6A', 'pseU')
+    rna_sup_choices <- c('none', 'm5C_2OmeC', 'm6A_DRACH', 'inosine_m6A_2OmeA', 'pseU_2OmeU', '2OmeG')
+    choices <- if (is.null(input$nucleic)) dna_choices else switch(input$nucleic,
+      'dna' = dna_choices,
+      'rna' = if (input$model == 'hac') rna_hac_choices else if (input$model == 'sup') rna_sup_choices else dna_choices
+    )
+
+    sel <- isolate(input$mod)
+    # drop selections not in choices
+    if (!is.null(sel)) {
+      valid_sel <- sel[sel %in% choices]
+      if (length(valid_sel) == 0) valid_sel <- 'none'
+      # if 'none' is among multiple selections, remove it
+      if (length(valid_sel) > 1 && 'none' %in% valid_sel) valid_sel <- valid_sel[valid_sel != 'none']
+      updateSelectizeInput(session, 'mod', choices = choices, selected = valid_sel)
+    } else {
+      updateSelectizeInput(session, 'mod', choices = choices, selected = 'none')
     }
   })
 
