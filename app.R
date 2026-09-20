@@ -46,7 +46,9 @@ sidebar <- sidebar(
     hover_action_button('start', 'Start run', button_animation = 'overline-reveal'),
     hover_action_button('show_session', 'Show session', button_animation = 'overline-reveal'),
     hover_action_button('ctrlc', 'Send Ctrl-C', button_animation = 'overline-reveal'),
-    hover_action_button(inputId = 'kill', label = 'Kill session', button_animation = 'overline-reveal')
+    hover_action_button(inputId = 'kill', label = 'Kill session', button_animation = 'overline-reveal'),
+    hover_action_button('show_models', 'Show available models', button_animation = 'overline-reveal'),
+    hover_action_button('show_gpu', 'Show GPU info', button_animation = 'overline-reveal')
   ),
   selectizeInput('gpus', 'GPUs on machine', choices = c(1:4), selected = 4, multiple = F),
   uiOutput('nucleic'),
@@ -417,7 +419,98 @@ server <- function(input, output, session) {
       }
     )
   })
+
+  #nvidia-smi
+  observeEvent(input$show_gpu, {
+    shinyjs::html(id = "stdout", html = "")
+
+    nvidia_smi_p <- tryCatch(
+      processx::run(
+        'nvidia-smi',
+        pty = TRUE,
+        error_on_status = FALSE
+      ),
+      error = function(e) NULL
+    )
+
+    shinyjs::html(id = "stdout", html = paste0('<pre>', htmltools::htmlEscape(nvidia_smi_p$stdout), '</pre>'), add = T);
+    runjs("document.getElementById('stdout').parentElement.scrollTo({ top: 1e9, behavior: 'smooth' });")
+    
+  })
   
+  # show available dorado models
+  # 'dorado download --list' writes its listing to stderr as log lines
+  # (e.g. "[...] [info]  - dna_r10.4.1_e8.2_400bps_hac@v4.2.0"), grouped
+  # under "> section name" headers. We keep only the entries under the
+  # "simplex models" and "modification models" sections, print the
+  # filtered list to stdout, and show it in the app's output panel.
+  observeEvent(input$show_models, {
+    shinyjs::html(id = "stdout", html = "")
+
+    version_p <- tryCatch(
+      processx::run(
+        'dorado', args = c('--version'),
+        pty = TRUE,
+        error_on_status = FALSE
+      ),
+      error = function(e) NULL
+    )
+    version_text <- if (!is.null(version_p) && !is.null(version_p$stdout)) {
+      v <- gsub('\033\\[[0-9;]*[a-zA-Z]', '', version_p$stdout)
+      v <- trimws(gsub('\r\n|\n|\r', ' ', v))
+      if (nzchar(v)) v else 'unknown'
+    } else {
+      'unknown'
+    }
+
+    p <- tryCatch(
+      processx::run(
+        'dorado', args = c('download', '--list'),
+        pty = TRUE,
+        error_on_status = FALSE
+      ),
+      error = function(e) NULL
+    )
+
+    if (is.null(p) || is.null(p$stdout)) {
+      notify_failure('Could not run "dorado download --list" - is dorado on PATH?', timeout = 2000, position = 'center-bottom')
+      return()
+    }
+
+    # with pty = TRUE, stdout+stderr are merged into p$stdout, and the
+    # pty adds ANSI colour codes and CRLF line endings - strip both
+    plain_text <- gsub('\033\\[[0-9;]*[a-zA-Z]', '', p$stdout)
+    raw_lines <- strsplit(plain_text, '\r\n|\n|\r')[[1]]
+    # strip the leading "[timestamp] [level] " log prefix
+    clean_lines <- sub('^\\[[^]]*\\]\\s*\\[[^]]*\\]\\s*', '', raw_lines)
+
+    wanted_sections <- c('simplex models', 'modification models')
+    section <- NA_character_
+    keep <- character(0)
+    for (line in clean_lines) {
+      if (grepl('^>\\s*', line)) {
+        section <- trimws(sub('^>\\s*', '', line))
+        next
+      }
+      if (!is.na(section) && section %in% wanted_sections && grepl('^\\s*-\\s*', line)) {
+        keep <- c(keep, trimws(sub('^\\s*-\\s*', '', line)))
+      }
+    }
+
+    if (length(keep) == 0) {
+      models_text <- 'No simplex or modification models found in "dorado download --list" output.'
+    } else {
+      models_text <- paste(keep, collapse = '\n')
+    }
+    out_text <- paste0('dorado version: ', version_text, '\n\n', models_text)
+
+    # print the filtered list to stdout (the original listing was on stderr)
+    cat(out_text, sep = '\n')
+
+    shinyjs::html(id = "stdout", html = paste0('<pre>', htmltools::htmlEscape(out_text), '</pre>'), add= T);
+    runjs("document.getElementById('stdout').parentElement.scrollTo({ top: 1e9, behavior: 'smooth' });")
+  })
+
   # close session
   observeEvent(input$kill, {
     session_selected <- tmux_sessions()[selected(), ]$session_id
@@ -484,7 +577,7 @@ server <- function(input, output, session) {
     if (using_custom_model()) return(NULL)
     current <- isolate(input$model)
     selectizeInput(
-      "model", "Basecalling speed",
+      "model", "Short model name",
       choices = c('fast', 'hac', 'sup'),
       selected = if (is.null(current)) 'fast' else current
     )
