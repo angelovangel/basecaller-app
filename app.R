@@ -427,7 +427,7 @@ server <- function(input, output, session) {
     nvidia_smi_p <- tryCatch(
       processx::run(
         'nvidia-smi',
-        pty = TRUE,
+        #pty = TRUE,
         error_on_status = FALSE
       ),
       error = function(e) NULL
