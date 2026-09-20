@@ -438,6 +438,47 @@ server <- function(input, output, session) {
     
   })
   
+  # run a dorado subcommand and get back its combined stdout+stderr as if
+  # it were attached to a real terminal (dorado's logger changes behaviour
+  # when writing to a plain pipe). Tries processx's built-in pty support
+  # first; if that fails (e.g. no controlling terminal is available to the
+  # R/Shiny process in some hosting setups), falls back to wrapping the
+  # call in the 'script' utility, which allocates its own pty. Returns
+  # list(ok = TRUE, output = <text>) or list(ok = FALSE, error = <msg>).
+  run_dorado_pty <- function(args) {
+    res <- tryCatch(
+      processx::run('dorado', args = args, pty = TRUE, error_on_status = FALSE),
+      error = function(e) e
+    )
+    if (!inherits(res, 'error') && !is.null(res$stdout)) {
+      return(list(ok = TRUE, output = res$stdout))
+    }
+    pty_error <- if (inherits(res, 'error')) conditionMessage(res) else 'pty run returned no stdout'
+
+    script_bin <- Sys.which('script')
+    if (nzchar(script_bin)) {
+      is_mac <- Sys.info()[['sysname']] == 'Darwin'
+      script_args <- if (is_mac) {
+        # BSD script (macOS): script [-q] file command...
+        c('-q', '/dev/null', 'dorado', args)
+      } else {
+        # util-linux script (Linux): script -qec "command" file
+        c('-qec', paste(shQuote(c('dorado', args)), collapse = ' '), '/dev/null')
+      }
+      res2 <- tryCatch(
+        processx::run('script', args = script_args, error_on_status = FALSE),
+        error = function(e) e
+      )
+      if (!inherits(res2, 'error') && !is.null(res2$stdout)) {
+        return(list(ok = TRUE, output = res2$stdout))
+      }
+      script_error <- if (inherits(res2, 'error')) conditionMessage(res2) else 'script fallback returned no stdout'
+      return(list(ok = FALSE, error = paste0('pty: ', pty_error, ' | script fallback: ', script_error)))
+    }
+
+    list(ok = FALSE, error = pty_error)
+  }
+
   # show available dorado models
   # 'dorado download --list' writes its listing to stderr as log lines
   # (e.g. "[...] [info]  - dna_r10.4.1_e8.2_400bps_hac@v4.2.0"), grouped
@@ -447,39 +488,26 @@ server <- function(input, output, session) {
   observeEvent(input$show_models, {
     shinyjs::html(id = "stdout", html = "")
 
-    version_p <- tryCatch(
-      processx::run(
-        'dorado', args = c('--version'),
-        pty = TRUE,
-        error_on_status = FALSE
-      ),
-      error = function(e) NULL
-    )
-    version_text <- if (!is.null(version_p) && !is.null(version_p$stdout)) {
-      v <- gsub('\033\\[[0-9;]*[a-zA-Z]', '', version_p$stdout)
+    version_res <- run_dorado_pty(c('--version'))
+    version_text <- if (version_res$ok) {
+      v <- gsub('\033\\[[0-9;]*[a-zA-Z]', '', version_res$output)
       v <- trimws(gsub('\r\n|\n|\r', ' ', v))
       if (nzchar(v)) v else 'unknown'
     } else {
       'unknown'
     }
 
-    p <- tryCatch(
-      processx::run(
-        'dorado', args = c('download', '--list'),
-        pty = TRUE,
-        error_on_status = FALSE
-      ),
-      error = function(e) NULL
-    )
+    p <- run_dorado_pty(c('download', '--list'))
 
-    if (is.null(p) || is.null(p$stdout)) {
-      notify_failure('Could not run "dorado download --list" - is dorado on PATH?', timeout = 2000, position = 'center-bottom')
+    if (!p$ok) {
+      notify_failure(paste0('Could not run "dorado download --list": ', p$error), timeout = 5000, position = 'center-bottom')
+      shinyjs::html(id = "stdout", html = paste0('<pre>', htmltools::htmlEscape(paste0('Error running dorado: ', p$error)), '</pre>'), add = T)
+      runjs("document.getElementById('stdout').parentElement.scrollTo({ top: 1e9, behavior: 'smooth' });")
       return()
     }
 
-    # with pty = TRUE, stdout+stderr are merged into p$stdout, and the
-    # pty adds ANSI colour codes and CRLF line endings - strip both
-    plain_text <- gsub('\033\\[[0-9;]*[a-zA-Z]', '', p$stdout)
+    # strip ANSI colour codes and normalise CRLF/CR line endings
+    plain_text <- gsub('\033\\[[0-9;]*[a-zA-Z]', '', p$output)
     raw_lines <- strsplit(plain_text, '\r\n|\n|\r')[[1]]
     # strip the leading "[timestamp] [level] " log prefix
     clean_lines <- sub('^\\[[^]]*\\]\\s*\\[[^]]*\\]\\s*', '', raw_lines)
