@@ -193,6 +193,9 @@ ui <- secure_app(ui,theme = "simplex")
 credentials <- readRDS("credentials.rds")
 
 server <- function(input, output, session) {
+
+  # start disabled until a valid pod5 folder is selected
+  shinyjs::disable('start')
   
   # the model actually in effect: a typed custom model name takes
   # precedence over the fast/hac/sup preset when non-empty
@@ -716,6 +719,8 @@ server <- function(input, output, session) {
       pod5files <- length(list.files(pod5dir, pattern = '*.pod5', recursive = input$recursive))
       if (pod5files > 0) {
         shinyjs::enable('start')
+      } else {
+        shinyjs::disable('start')
       }
     }
   })
