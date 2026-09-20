@@ -26,14 +26,27 @@ is_bin_on_path = function(bin) {
   return(exit_code == 0)
 }
 
+# extract the base basecalling speed (fast/hac/sup) from either a plain
+# selection ('fast'/'hac'/'sup') or a full versioned dorado model name
+# (e.g. 'dna_r10.4.1_e8.2_400bps_hac@v4.2.0')
+model_base <- function(m) {
+  if (is.null(m) || length(m) == 0) return(NA_character_)
+  if (m %in% c('fast', 'hac', 'sup')) return(m)
+  if (grepl('_fast@', m)) return('fast')
+  if (grepl('_hac@', m)) return('hac')
+  if (grepl('_sup@', m)) return('sup')
+  NA_character_
+}
+
 
 sidebar <- sidebar(
   title = "Controls",
   selectizeInput('gpus', 'GPUs on machine', choices = c(1:4), selected = 4, multiple = F),
   uiOutput('nucleic'),
-  selectizeInput(
-    "model", "Select dorado model",
-    choices = c('fast', 'hac', 'sup')
+  uiOutput('model_ui'),
+  textInput(
+    'model_custom', 'Or enter a specific dorado model name',
+    value = '', placeholder = 'e.g. dna_r10.4.1_e8.2_400bps_hac@v4.2.0'
   ),
   selectizeInput('readformat', 'Output format', choices = c('fastq', 'bam'), selected = 'fastq'),
   uiOutput('mods'),
@@ -94,6 +107,75 @@ credentials <- readRDS("credentials.rds")
 
 server <- function(input, output, session) {
   
+  # the model actually in effect: a typed custom model name takes
+  # precedence over the fast/hac/sup preset when non-empty
+  effective_model <- reactive({
+    custom <- input$model_custom
+    if (is.null(custom)) custom <- ''
+    custom <- trimws(custom)
+    if (nzchar(custom)) custom else input$model
+  })
+
+  # TRUE when a specific/custom model name has been typed in
+  using_custom_model <- reactive({
+    custom <- input$model_custom
+    !is.null(custom) && nzchar(trimws(custom))
+  })
+
+  # the nucleic acid actually in effect: while a custom model is typed in,
+  # the picker is hidden, so infer dna/rna from the model name itself
+  # (dorado model names start with 'dna_' or 'rna_')
+  effective_nucleic <- reactive({
+    if (using_custom_model()) {
+      if (grepl('^rna', tolower(trimws(effective_model())))) 'rna' else 'dna'
+    } else if (is.null(input$nucleic)) {
+      'dna'
+    } else {
+      input$nucleic
+    }
+  })
+
+  # build the dorado command-line args for a given pod5 dir; shared by the
+  # live preview and the actual 'start' handler so they never drift apart
+  build_cmd_args <- function(pod5dir, as_file_path = NA) {
+    mods_vec <- effective_model()
+    # only combine the model with selected mod tags for the short
+    # basecalling-speed names (hac/sup, i.e. not 'fast') and BAM output -
+    # never for a specific/custom model name
+    if (!using_custom_model() && !is.null(input$readformat) && input$readformat == 'bam' && !is.null(input$mod) && model_base(effective_model()) != 'fast') {
+      mods_vec <- c(mods_vec, input$mod)
+    }
+    mods_vec <- unlist(mods_vec)
+    mods_vec <- mods_vec[!is.na(mods_vec) & mods_vec != '' & mods_vec != 'none']
+    model_arg <- paste(mods_vec, collapse = ',')
+    if (model_arg == '') model_arg <- effective_model()
+    cmd_args <- c(dorado_script(), '-p', pod5dir, '-m', model_arg)
+    if (isTRUE(input$recursive)) cmd_args <- c(cmd_args, '-r')
+    if (isTRUE(input$barcoded)) cmd_args <- c(cmd_args, paste0('-k', input$kit))
+    if (isTRUE(input$adaptive) && !is.null(as_file_path) && !is.na(as_file_path) && nzchar(as_file_path)) {
+      cmd_args <- c(cmd_args, paste0('-l', as_file_path))
+    }
+    if (!is.null(input$readformat) && input$readformat == 'bam') cmd_args <- c(cmd_args, '-b')
+    cmd_args
+  }
+
+  # live command preview, shown once a pod5 folder and a model are selected
+  cmd_preview <- reactive({
+    req(input$pod5)
+    if (is.integer(input$pod5)) return(NULL)
+    pod5dir <- parseDirPath(volumes, input$pod5)
+    if (length(pod5dir) == 0 || !nzchar(pod5dir)) return(NULL)
+    model <- effective_model()
+    if (is.null(model) || !nzchar(model)) return(NULL)
+
+    as_file_path <- NA
+    if (isTRUE(input$adaptive) && !is.null(input$decision_file)) {
+      as_file <- parseFilePaths(volumes, input$decision_file)
+      if (nrow(as_file) > 0) as_file_path <- as_file$datapath
+    }
+    paste(build_cmd_args(pod5dir, as_file_path), collapse = ' ')
+  })
+
   res_auth <- secure_server(
     check_credentials = check_credentials(credentials)
   )
@@ -216,21 +298,8 @@ server <- function(input, output, session) {
     args1 <- c('new', '-d', '-s', new_session_name)
     system2('tmux', args = args1)
     
-    # build model argument; combine model and any selected mod(s), excluding 'none'
-    mods_vec <- input$model
-    # only append selected mods when BAM output and model is not 'fast'
-    if (!is.null(input$readformat) && input$readformat == 'bam' && !is.null(input$mod) && input$model != 'fast') {
-      mods_vec <- c(mods_vec, input$mod)
-    }
-    mods_vec <- unlist(mods_vec)
-    mods_vec <- mods_vec[!is.na(mods_vec) & mods_vec != '' & mods_vec != 'none']
-    model_arg <- paste(mods_vec, collapse = ',')
-    if (model_arg == '') model_arg <- input$model
-    cmd_args <- c(dorado_script(), '-p', pod5dir, '-m', model_arg)
-    if (input$recursive) cmd_args <- c(cmd_args, '-r')
-    if (input$barcoded) cmd_args <- c(cmd_args, paste0('-k', input$kit))
-    if (input$adaptive) cmd_args <- c(cmd_args, paste0('-l', as_file$datapath))
-    if (input$readformat == 'bam') cmd_args <- c(cmd_args, '-b')
+    as_file_path <- if (isTRUE(input$adaptive) && nrow(as_file) > 0) as_file$datapath else NA
+    cmd_args <- build_cmd_args(pod5dir, as_file_path)
     
     # execute dorado in the new session
     string <- paste(cmd_args, collapse = ' ')
@@ -324,24 +393,42 @@ server <- function(input, output, session) {
     }
   })
 
-  # nucleic acid selection (dna | rna)
+  # basecalling speed preset (fast/hac/sup) - hidden once a specific
+  # model name is typed in, since it no longer applies
+  output$model_ui <- renderUI({
+    if (using_custom_model()) return(NULL)
+    current <- isolate(input$model)
+    selectizeInput(
+      "model", "Basecalling speed",
+      choices = c('fast', 'hac', 'sup'),
+      selected = if (is.null(current)) 'fast' else current
+    )
+  })
+
+  # nucleic acid selection (dna | rna) - hidden once a specific
+  # model name is typed in, since it's implied by that model name
   output$nucleic <- renderUI({
-    req(input$readformat, input$model)
-      selectInput('nucleic', 'Nucleic acid', choices = c('dna', 'rna'), selected = 'dna')
+    req(input$readformat)
+    if (using_custom_model()) return(NULL)
+    req(effective_model())
+    current <- isolate(input$nucleic)
+    selectInput('nucleic', 'Nucleic acid', choices = c('dna', 'rna'),
+                selected = if (is.null(current)) 'dna' else current)
   })
 
   # show modification models only when BAM output is selected and model != 'fast'
   output$mods <- renderUI({
-    req(input$readformat, input$model, input$nucleic)
-    if (input$readformat == 'bam' && input$model != 'fast') {
+    req(input$readformat, effective_model())
+    base <- model_base(effective_model())
+    if (input$readformat == 'bam' && !is.na(base) && base != 'fast') {
       # define choices based on nucleic and model
       dna_choices <- c('none', '4mC_5mC', '5mCG_5hmCG', '5mC_5hmC', '6mA')
       rna_hac_choices <- c('none', 'm5C', 'm6A_DRACH', 'inosine_m6A', 'pseU')
       rna_sup_choices <- c('none', 'm5C_2OmeC', 'm6A_DRACH', 'inosine_m6A_2OmeA', 'pseU_2OmeU', '2OmeG')
 
-      choices <- switch(input$nucleic,
+      choices <- switch(effective_nucleic(),
                         'dna' = dna_choices,
-                        'rna' = if (input$model == 'hac') rna_hac_choices else if (input$model == 'sup') rna_sup_choices else c('none'))
+                        'rna' = if (base == 'hac') rna_hac_choices else if (base == 'sup') rna_sup_choices else c('none'))
 
       selectizeInput('mod', 'Modification model', choices = choices, selected = 'none', multiple = TRUE)
     } else {
@@ -351,17 +438,18 @@ server <- function(input, output, session) {
 
   # ensure mod choices/selection stay valid when model or nucleic changes
   observe({
-    req(input$readformat, input$model)
-    if (!(input$readformat == 'bam' && input$model != 'fast')) {
+    req(input$readformat, effective_model())
+    base <- model_base(effective_model())
+    if (!(input$readformat == 'bam' && !is.na(base) && base != 'fast')) {
       return()
     }
     # compute allowed choices
     dna_choices <- c('none', '4mC_5mC', '5mCG_5hmCG', '5mC_5hmC', '6mA')
     rna_hac_choices <- c('none', 'm5C', 'm6A_DRACH', 'inosine_m6A', 'pseU')
     rna_sup_choices <- c('none', 'm5C_2OmeC', 'm6A_DRACH', 'inosine_m6A_2OmeA', 'pseU_2OmeU', '2OmeG')
-    choices <- if (is.null(input$nucleic)) dna_choices else switch(input$nucleic,
+    choices <- switch(effective_nucleic(),
       'dna' = dna_choices,
-      'rna' = if (input$model == 'hac') rna_hac_choices else if (input$model == 'sup') rna_sup_choices else dna_choices
+      'rna' = if (base == 'hac') rna_hac_choices else if (base == 'sup') rna_sup_choices else dna_choices
     )
 
     sel <- isolate(input$mod)
@@ -433,9 +521,11 @@ server <- function(input, output, session) {
     } else {
       pod5dir <- parseDirPath(volumes, input$pod5)
       pod5files <- length(list.files(pod5dir, pattern = '*.pod5', recursive = input$recursive))
+      cmd <- cmd_preview()
+      cmd_line <- if (is.null(cmd)) '' else paste0('\n\nCommand: ', cmd)
       paste0(
         'Selected pod5 directory: ', pod5dir, '\n',
-        pod5files, ' pod5 files found')
+        pod5files, ' pod5 files found', cmd_line)
     }
   })
   
