@@ -41,6 +41,13 @@ model_base <- function(m) {
 
 sidebar <- sidebar(
   title = "Controls",
+  tags$div(
+    class = 'sidebar-toolbar',
+    hover_action_button('start', 'Start run', button_animation = 'overline-reveal'),
+    hover_action_button('show_session', 'Show session', button_animation = 'overline-reveal'),
+    hover_action_button('ctrlc', 'Send Ctrl-C', button_animation = 'overline-reveal'),
+    hover_action_button(inputId = 'kill', label = 'Kill session', button_animation = 'overline-reveal')
+  ),
   selectizeInput('gpus', 'GPUs on machine', choices = c(1:4), selected = 4, multiple = F),
   uiOutput('nucleic'),
   uiOutput('model_ui'),
@@ -60,33 +67,111 @@ sidebar <- sidebar(
   uiOutput('kits'),
   #tags$hr(),
   textInput('session_name', 'Name for new session (optional)', value = 'tgs'),
-  hover_action_button('start', 'Start dorado (new session)', button_animation = 'overline-reveal'),
-  hover_action_button('show_session', 'Show session pane', button_animation = 'overline-reveal'),
-  hover_action_button('ctrlc', 'Send ctrl-c to session', button_animation = 'overline-reveal'),
-  hover_action_button(inputId = 'kill', label = 'Kill session', button_animation = 'overline-reveal'),
 )
 
 ui <- page_navbar(
   tags$head(
     tags$style(
-      ".progress {
-          transform: rotate(180deg);
-          background: linear-gradient(to left, rgba(234, 236, 238), rgba(255,0,0,1));
-        //background-color: orange;
-        //opacity: 0.9;
-        //color: white;
+      HTML("
+      :root {
+        --brand-primary: #2C3E50;
+        --surface: #ffffff;
+        --surface-muted: #f4f6f8;
+        --border: #e3e7eb;
+      }
+
+      body {
+        background-color: var(--surface-muted);
+      }
+
+      .navbar {
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      }
+
+      .navbar-controls {
+        font-weight: 600;
+        letter-spacing: 0.2px;
+      }
+
+      /* toolbar of action buttons, aligned to the top of the sidebar */
+      .sidebar-toolbar {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.5rem;
+        padding-bottom: 1rem;
+        margin-bottom: 1rem;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .sidebar-toolbar .btn {
+        width: 100%;
+        white-space: normal;
+        line-height: 1.2;
+        border-radius: 8px;
+        border: none;
+        font-size: 0.78rem;
+        padding: 0.5rem 0.4rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+
+      .sidebar-toolbar .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+      }
+
+      .hover-action-button {
+        background-color: #e3f2fb;
+        color: #14425e;
+      }
+
+      .bslib-sidebar-layout > .sidebar {
+        background-color: var(--surface);
+        border-right: 1px solid var(--border);
+      }
+
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+      }
+
+      .form-control, .selectize-input {
+        border-radius: 8px;
+      }
+
+      .progress {
+        transform: rotate(180deg);
+        background: linear-gradient(to left, #eaecee, #ff4d4d);
+        border-radius: 6px;
+        height: 10px;
       }
       .progress-bar {
-        background: #EAECEE;
+        background: #eaecee;
+        border-radius: 6px;
       }
       ")
+    )
   ),
 
   useShinyjs(),
   use_hover(),
   fillable = T,
-  title = 'ONT basecaller app',
-  theme = bs_theme(font_scale = 0.9, bootswatch = 'yeti', primary = '#2C3E50'),
+  title = tags$div(
+    class = 'navbar-controls',
+    style = 'display:flex; align-items:center; gap:0.5rem;',
+    bsicons::bs_icon('cpu'),
+    tags$span('ONT basecaller app')
+  ),
+  theme = bs_theme(
+    version = 5,
+    font_scale = 0.9,
+    bootswatch = 'yeti',
+    primary = '#2C3E50',
+    base_font = font_google('Inter'),
+    heading_font = font_google('Inter'),
+    "border-radius" = "0.6rem"
+  ),
   sidebar = sidebar,
   nav_panel(
     title = "",
@@ -489,8 +574,8 @@ server <- function(input, output, session) {
         started = colDef(minWidth = 130, format = colFormat(datetime = T, locales = 'swe-SE')),
         runtime = colDef(minWidth = 70), #format = colFormat(suffix = ' h', digits = 2)),
         #command = colDef(minWidth = 50),
-        active = colDef(minWidth = 70),
-        attached = colDef(minWidth = 70),
+        active = colDef(minWidth = 70, show = F),
+        attached = colDef(minWidth = 70, show = F),
         session_path = colDef(minWidth = 250)
       )
     )
