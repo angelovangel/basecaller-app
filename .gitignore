@@ -5,4 +5,5 @@
 .Renviron
 .DS_Store
 .temp_dorado*
+data/models
 credentials.rds
