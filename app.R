@@ -41,34 +41,54 @@ model_base <- function(m) {
 
 sidebar <- sidebar(
   title = "Controls",
-  tags$div(
-    class = 'sidebar-toolbar',
-    hover_action_button('start', 'Start run', button_animation = 'overline-reveal'),
-    hover_action_button('show_session', 'Show session', button_animation = 'overline-reveal'),
-    hover_action_button('ctrlc', 'Send Ctrl-C', button_animation = 'overline-reveal'),
-    hover_action_button(inputId = 'kill', label = 'Kill session', button_animation = 'overline-reveal'),
-    hover_action_button('show_models', 'Show available models', button_animation = 'overline-reveal'),
-    hover_action_button('show_gpu', 'Show GPU info', button_animation = 'overline-reveal')
-  ),
-  selectizeInput('gpus', 'GPUs on machine', choices = c(1:4), selected = 4, multiple = F),
-  uiOutput('nucleic'),
-  uiOutput('model_ui'),
-  textInput(
-    'model_custom', 'Or enter a specific dorado model name',
-    value = '', placeholder = 'e.g. dna_r10.4.1_e8.2_400bps_hac@v4.2.0'
-  ),
-  selectizeInput('readformat', 'Output format', choices = c('fastq', 'bam'), selected = 'fastq'),
-  uiOutput('mods'),
-  checkboxInput('adaptive', 'Adaptive sampling run', value = F),
-  uiOutput('as_file'), #render conditionally if adaptive sampling
-  shinyDirButton("pod5", "Select pod5 folder", title ='Please select a folder with signal data', multiple = F),
-  checkboxInput('recursive', 'Search pod5 recursively'),
-  
-  checkboxInput('barcoded', 'Barcoded run'),
-  # uiOutput('minknow_output'),
-  uiOutput('kits'),
-  #tags$hr(),
-  textInput('session_name', 'Name for new session (optional)', value = 'tgs'),
+  width = 340,
+  accordion(
+    id = 'sidebar_accordion',
+    open = c('Controls', 'Model selection', 'Pod5'),
+    multiple = TRUE,
+
+    accordion_panel(
+      title = 'Controls',
+      icon = bsicons::bs_icon('sliders'),
+      tags$div(
+        class = 'sidebar-toolbar',
+        hover_action_button('start', 'Start run', button_animation = 'overline-reveal'),
+        hover_action_button('show_session', 'Show session', button_animation = 'overline-reveal'),
+        hover_action_button('ctrlc', 'Send Ctrl-C', button_animation = 'overline-reveal'),
+        hover_action_button(inputId = 'kill', label = 'Kill session', button_animation = 'overline-reveal'),
+        hover_action_button('show_models', 'Show available models', button_animation = 'overline-reveal'),
+        hover_action_button('show_gpu', 'Show GPU info', button_animation = 'overline-reveal')
+      ),
+      selectizeInput('gpus', 'GPUs on machine', choices = c(1:4), selected = 4, multiple = F)
+    ),
+
+    accordion_panel(
+      title = 'Model selection',
+      icon = bsicons::bs_icon('cpu-fill'),
+      uiOutput('nucleic'),
+      uiOutput('model_ui'),
+      selectizeInput('readformat', 'Output format', choices = c('fastq', 'bam'), selected = 'fastq'),
+      uiOutput('mods'),
+      checkboxInput('adaptive', 'Adaptive sampling run', value = F),
+      uiOutput('as_file'), #render conditionally if adaptive sampling
+      textInput(
+        'model_custom', 'Or enter a specific dorado model name',
+        value = '', placeholder = 'e.g. dna_r10.4.1_e8.2_400bps_hac@v4.2.0'
+      )
+    ),
+
+    accordion_panel(
+      title = 'Pod5',
+      icon = bsicons::bs_icon('folder2-open'),
+      shinyDirButton("pod5", "Select pod5 folder", title ='Please select a folder with signal data', multiple = F),
+      checkboxInput('recursive', 'Search pod5 recursively'),
+      checkboxInput('barcoded', 'Barcoded run'),
+      # uiOutput('minknow_output'),
+      uiOutput('kits'),
+      #tags$hr(),
+      textInput('session_name', 'Name for new session (optional)', value = 'tgs')
+    )
+  )
 )
 
 ui <- page_navbar(
